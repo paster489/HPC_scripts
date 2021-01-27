@@ -1,0 +1,104 @@
+#!/bin/bash
+#
+# This script is written by Inga Paster on 17/01/2021
+# The script is performing the next executions:
+#                1) copy file /storage/sysinfo/auto/ipmi into /storage/scripts/inga_scripts/ipmi_working_file
+#                2) from the file /storage/scripts/inga_scripts/ipmi_working_file extracts the list of sge with failed ping
+#                3) for this lits check the load status of each sge
+#                4) print the list of sge for which load = 0
+#
+#
+
+###########################################################################################################
+# Clean the results file or create it if it doesn't exist
+##########################################################################################################
+if [ -f resultx.txt ]; then
+        touch results.txt
+#else
+#        > results.txt
+fi
+
+
+##########################################################################################################
+# Step 1 -  copy file /storage/sysinfo/auto/ipmi into /storage/scripts/inga_scripts/ipmi_working_file
+############################################################################################################
+cp /storage/sysinfo/auto/ipmi /storage/scripts/inga_scripts/ipmi_working_file
+
+
+##########################################################################################################
+# Step 2 - extracts the list of sge with failed ping and save it in array - sge_list
+############################################################################################################
+st=$(sed -n '8p' < /storage/scripts/inga_scripts/ipmi_working_file)
+st2=$(awk -F "egrep" '{print $3}' <<< "$st" | awk -F "-vw" '{print $2}'  | awk -F "conXXX" '{print $1}' | cut -d '"' -f2 | sed -e 's/con/sge/g')
+IFS='|' read -r -a sge_list <<< "$st2"
+
+echo
+echo "---------------------------------------------------------"
+echo "The size of sge list is: " ${#sge_list[@]}
+echo "The sge list with failed ping is: "  ${sge_list[@]} 
+echo
+
+
+##########################################################################################################
+# Step 3 - check the load status of each sge from the list
+############################################################################################################
+echo "---------------------------------------------------------"
+echo "The loading status is:"
+echo "---------------------------------------------------------"
+i=0
+#set -x
+for sge in ${sge_list[@]}; do
+	a=$(ssh $sge uptime |  awk -F "average:" '{print $2}' | awk -F "," '{print $1}'| awk -F " " '{print $1}') 
+
+	echo $(date +"%D %T") " , "  $sge " , loaded = " $a  | tee -a results.txt
+	
+	#qstat | grep  $sge | tee -a results.txt
+	#echo
+	
+	limit="1"
+	a_int=$(echo $a | cut -d'.' -f1)
+	if [[ "$a_int" -lt "$limit" ]]; then
+		#echo $a_int
+                free[$i]=$sge
+		i=$((i+1))
+        fi
+
+done
+#set +x
+
+
+##########################################################################################################
+# Step 4 - if there are sge with loading <5% send mail and print their IDs
+############################################################################################################
+echo
+echo "---------------------------------------------------------"
+echo "The sge which are free of load are:"
+echo "---------------------------------------------------------"
+
+#title="$PWD$0"
+t1="Tools availble for ping troublshooting, with load < "
+t2="%"
+t3=$t1$limit$t2
+echo "$t3"
+
+#adress="paster@post.bgu.ac.il,viktor@bgumail.bgu.ac.il"
+adress="paster@post.bgu.ac.il,paster.inga1978@gmail.com"
+
+
+if [ "$i" != "0" ]; then
+	echo ${free[@]}
+	echo
+
+	/sbin/service sendmail start
+	mail -s "$t3" $adress <<<  ${free[@]}
+	sleep 5;
+	/sbin/service sendmail stop
+else
+	msg="No availible sge with  loading less than "
+	echo $msg $limit "%"
+	sleep 5;
+fi
+
+echo
+echo "End of the script"
+echo
