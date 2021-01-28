@@ -1,54 +1,24 @@
 #!/bin/sh
 #------------------------------------------------------------
-# Zabbix agent installation on Centos8 VM: slc1, slc2, slwk (server), sldb
+# Zabbix agent installation on OL8 tools
 # Created by Inga on 26/02/2021
 #------------------------------------------------------------
 # Input: machine hostname where zabbix installation need be done - only one machine
 # Output: N/A
 # Process:
-#         1) Check the version of Centos  and that getenforce is disable
+#         1) Check the linux version and that getenforce is disable
 #         2) Check that zabbix is not installed on this machine
 #         3) Install zabbix agent
 #         4) Save the original zabbix_agentd.conf as zabbix_agentd.conf.orig
-#         5) Update zabbix_agentd.conf with 
-#                    Zabbix Server IP = 172.20.7.235 (zabbix frontend => slwk) and
-#                    Hostanme = HPC_OL8 (the name of group in the frontend web page)
+#         5) Update zabbix_agentd.conf  
 #         6) Start and enable zabbix-agent
 #         7) Check if zabbix-agent is running:
-#         7a) If yes: 
-#                   7a.a) save machine IP & hostname inside /gpfs0/system/zabbix_storage/zabbix_IP_list.txt
-#                   7a.b) save machine hostname /gpfs0/system/zabbix_storage/zabbix_hostname_list.txt
-#         7b) If not:
-#                   7b.a) print error for this machine
+#             7a) If yes: save machine hostname /storage/sysinfo/zabbix_storage/zabbix_hostname_list.txt
+#             7b) If not: print error for this machine
+#        *) Frontend => http://132.72.137.175:8080/zabbix/hosts.php, server => slwk    
 #
-#         ***) Not in this script but need be done after completion of the script:
-#                         update Zabbix frontend Name = HPC_OL8  with the new IP (use machine_IP.txt file)
-#                         zabbix web page => http://132.72.137.175:8080/zabbix/hosts.php    
 #-----------------------------------------------------------
-
-#------------------------------------------------------------
-# Initializations
-#------------------------------------------------------------
-
-# For (2) where grep will remove matchin of the running of the current script
-script_name=zabbix_agent_install
-
-# For (5) zabbix_agentd.conf update
-default_IP="Server=127.0.0.1" 
-correct_IP="Server=172.20.7.235"
-
-default_group_name="Hostname=Zabbix server"
-correct_group_name="Hostname=VM"
-
-default_active_IP="ServerActive=127.0.0.1"
-correct_active_IP="#ServerActive=127.0.0.1"
-
-# For (7) storage path where IP & hostnames of the machine 
-# where zabbix agent was successfully installed will be saved
-GPFS=/gpfs0/system/zabbix_storage
-
-#------------------------------------------------------------
-# 1)  Check the version of Oracle Linux and that getenforce is disable
+# 1)  Check the version of  Linux and that getenforce is disable
 #------------------------------------------------------------
 echo
 echo ".................................................................."
@@ -65,15 +35,15 @@ fi
 
 echo
 echo ".................................................................."
-echo -e "   \e[38;5;256mCheck the version of Centos  \e[0m"
+echo -e "   \e[38;5;256mCheck the version of Linux  \e[0m"
 echo ".................................................................."
 
-OL_ver=$(cat /etc/centos-release | awk '{print $5}'|cut -d. -f1)
-if [ $OL_ver -lt 6 ]; then
-	echo -e "   \e[35mWARNING!\e[0m Oracle Linux version below 6, please update Oracle linux"
+linux_ver=$(cat /etc/redhat-release | awk -F 'release' '{print $2}'|cut -d. -f1  | cut -d' ' -f2)
+if [ $linux_ver -lt 6 ]; then
+	echo -e "   \e[35mWARNING!\e[0m Linux version below 6, please update linux"
 	exit
 else
-	echo -e "   \e[32mOK\e[0m:"   $(cat /etc/oracle-release) 
+	echo -e "   \e[32mOK\e[0m:"   $(cat /etc/redhat-release) 
 fi
 
 #------------------------------------------------------------
@@ -82,7 +52,7 @@ fi
 echo ".................................................................."
 echo -e "   \e[38;5;256mCheck if zabbix already exists  \e[0m"
 echo ".................................................................."
-
+script_name=zabbix_agent_install
 zabbix_installed=$(ps -ef | grep zabbix | grep -v grep | grep -v $script_name)
 if [ -z "$zabbix_installed" ]; then
 	echo -e "   \e[32mOK\e[0m: Zabbix does not exist"
@@ -105,7 +75,21 @@ echo
 echo ".................................................................."
 echo -e "   \e[38;5;256mZabbix instalation  \e[0m"
 echo ".................................................................."
-dnf install zabbix-agent -y
+
+if [ $linux_ver -eq 8 ]; then
+	echo "installing with dnf"
+	echo "--------------------------"	
+	dnf install zabbix-agent zabbix-get -y
+	echo
+	#dnf clean all
+else
+	echo "installing with yum"
+	echo "--------------------------"
+	yum install zabbix-agent zabbix-get -y
+        echo	
+	#yum clean all
+fi
+
 echo -e "   \e[32mOK\e[0m: Zabbix installed"
 echo
 
@@ -129,9 +113,31 @@ echo ".................................................................."
 echo -e "   \e[38;5;256mUpdate zabbix_agentd.conf file  \e[0m"
 echo ".................................................................."
 
-sed -i "s|$default_IP|$correct_IP|" zabbix_agentd.conf
-sed -i "s|$default_group_name|$correct_group_name|" zabbix_agentd.conf
-sed -i "s|$default_active_IP|$correct_active_IP|" zabbix_agentd.conf
+default_Server="Server=127.0.0.1"
+correct_Server="Server=172.20.7.235"
+
+default_ServerActive="ServerActive=127.0.0.1"
+correct_ServerActive="ServerActive=172.20.7.235"
+
+default_Hostname="Hostname=Zabbix server"
+correct_Hostname="#Hostname=Zabbix server"
+
+default_HostnameItem="# HostnameItem=system.hostname"
+correct_HostnameItem="HostnameItem=system.hostname"
+
+default_HostMetadataItem="# HostMetadataItem="
+correct_HostMetadataItem="HostMetadataItem=release"
+
+default_UserParameter="# UserParameter="
+correct_UserParameter="UserParameter=release,cat /etc/redhat-release"
+
+sed -i "s|$default_Server|$correct_Server|" zabbix_agentd.conf
+sed -i "s|$default_ServerActive|$correct_ServerActive|" zabbix_agentd.conf
+sed -i "s|$default_Hostname|$correct_Hostname|" zabbix_agentd.conf
+sed -i "s|$default_HostnameItem|$correct_HostnameItem|" zabbix_agentd.conf
+sed -i "s|$default_HostMetadataItem|$correct_HostMetadataItem|" zabbix_agentd.conf
+sed -i "s|$default_UserParameter|$correct_UserParameter|" zabbix_agentd.conf
+
 echo
 
 #------------------------------------------------------------
@@ -150,16 +156,15 @@ systemctl start zabbix-agent
 echo
 
 echo ".................................................................."
-ECHO -E "   \E[38;5;256MStatus of zabbix-agent  \e[0m"
+echo -e "   \e[38;5;256mStatus of zabbix-agent  \e[0m"
 echo ".................................................................."
-systemctl status zabbix-agent
+systemctl status zabbix-agent --no-pager
 echo
 
 #------------------------------------------------------------
 # 7) Check if zabbix-agent is running
 #         7a) If yes:
-#                   7a.a) save machine IP & hostname inside /gpfs0/system/zabbix_storage/zabbix_IP_list.txt
-#                   7a.b) save machine hostname /gpfs0/system/zabbix_storage/zabbix_hostname_list.txt
+#                   7a.b) save machine hostname /storage/sysinfo/zabbix_storage
 #         7b) If not:
 #                   7b.a) print error for this machine
 #------------------------------------------------------------
@@ -167,11 +172,9 @@ echo ".................................................................."
 echo -e "   \e[38;5;256m Check if zabbix-agent is running  \e[0m"
 echo ".................................................................."
 
-if [ ! -f $GPFS/zabbix_IP_list.txt ]; then
-	touch $GPFS/zabbix_IP_list.txt
-fi
-if [ ! -f $GPFS/zabbix_hostname_list.txt ]; then
-	touch $GPFS/zabbix_hostname_list.txt
+storage=/storage/sysinfo/zabbix_storage
+if [ ! -f $storage/zabbix_hostname_list.txt ]; then
+	touch $storage/zabbix_hostname_list.txt
 fi
 
 zabbix_installed=$(ps -ef | grep zabbix | grep -v grep | grep -v zabbix_install)
@@ -180,13 +183,9 @@ if [ -z "$zabbix_installed" ]; then
 	exit
 else
 	echo -e "   \e[32mOK\e[0m: Zabbix is running"
-	sge_ip=$(hostname -I | awk -F " " '{print $1}' )
 	sge_hostname=$(hostname)
-	echo $sge_ip >> $GPFS/zabbix_IP_list.txt
-	echo $sge_hostname >> $GPFS/zabbix_hostname_list.txt
+	echo $sge_hostname " -> "  $(date +"%D %T") " -> "  $(cat /etc/redhat-release)  >> $storage/zabbix_hostname_list.txt
 fi
-
-
 
 echo
 echo "END OF THE SCRIPT. By-by"
