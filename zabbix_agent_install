@@ -3,7 +3,7 @@
 # Zabbix agent installation on OL8 tools
 # Created by Inga on 26/02/2021
 #------------------------------------------------------------
-# Input: machine hostname where zabbix installation need be done - only one machine
+# Input: N/A
 # Output: N/A
 # Process:
 #         1) Check the version of Oracle Linux and that getenforce is disable
@@ -58,7 +58,7 @@ if [ -z "$zabbix_installed" ]; then
 	echo -e "   \e[32mOK\e[0m: Zabbix does not exist"
 else
 	echo -e "   \e[35mWARNING!\e[0m Zabbix already exists"
-	#exit
+	exit
 fi
 echo
 
